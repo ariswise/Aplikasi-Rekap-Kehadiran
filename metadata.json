@@ -1,0 +1,6 @@
+{
+  "name": "Aplikasi Rekap Kehadiran",
+  "description": "Sistem Rekapitulasi Kehadiran Siswa Profesional untuk Seluruh Jenjang Sekolah dengan Absensi Harian, Rekap Mingguan, Bulanan, Semester, Grafik, dan Sistem Peringatan Dini.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

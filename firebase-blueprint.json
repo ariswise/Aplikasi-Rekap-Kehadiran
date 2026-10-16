@@ -1,0 +1,84 @@
+{
+  "entities": {
+    "SchoolConfig": {
+      "title": "SchoolConfig",
+      "description": "School institutional configuration and letterhead profile",
+      "type": "object",
+      "properties": {
+        "schoolName": { "type": "string" },
+        "schoolLevel": { "type": "string" },
+        "npsn": { "type": "string" },
+        "address": { "type": "string" },
+        "academicYear": { "type": "string" },
+        "semester": { "type": "string" },
+        "currentClass": { "type": "string" },
+        "city": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["schoolName", "academicYear", "semester"]
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Student master profile record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nis": { "type": "string" },
+        "nisn": { "type": "string" },
+        "name": { "type": "string" },
+        "gender": { "type": "string" },
+        "classRoom": { "type": "string" },
+        "parentName": { "type": "string" },
+        "parentPhone": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "gender", "classRoom"]
+    },
+    "DailyAttendanceRecord": {
+      "title": "DailyAttendanceRecord",
+      "description": "Daily attendance session record for a class",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "classRoom": { "type": "string" },
+        "entries": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["date", "classRoom"]
+    },
+    "FollowUpCase": {
+      "title": "FollowUpCase",
+      "description": "Student disciplinary and attendance follow-up tracking case",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "classRoom": { "type": "string" },
+        "status": { "type": "string" },
+        "actionNotes": { "type": "string" },
+        "lastUpdated": { "type": "string" }
+      },
+      "required": ["id", "studentId", "classRoom", "status"]
+    }
+  },
+  "firestore": {
+    "/settings/{settingId}": {
+      "schema": "SchoolConfig",
+      "description": "Application settings and school identity documents"
+    },
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "Collection of enrolled students"
+    },
+    "/attendance/{recordId}": {
+      "schema": "DailyAttendanceRecord",
+      "description": "Collection of daily attendance records indexed by class and date"
+    },
+    "/followups/{caseId}": {
+      "schema": "FollowUpCase",
+      "description": "Student attendance follow-up cases and intervention tracking"
+    }
+  }
+}
