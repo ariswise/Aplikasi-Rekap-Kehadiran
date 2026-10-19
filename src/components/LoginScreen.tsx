@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { AuthUser, SchoolConfig } from '../types/attendance';
+import React, { useState, useEffect } from 'react';
+import { AuthUser, SchoolConfig, StoredAccount } from '../types/attendance';
 import { StorageService } from '../utils/storage';
+import { FirebaseService } from '../utils/firebase';
 import {
   School,
   Lock,
@@ -10,6 +11,7 @@ import {
   EyeOff,
   AlertCircle,
   ShieldCheck,
+  RefreshCw,
 } from 'lucide-react';
 
 interface LoginScreenProps {
@@ -28,7 +30,29 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  // Background fetch of latest accounts and school config from cloud
+  useEffect(() => {
+    if (FirebaseService.isConfigured()) {
+      FirebaseService.pullAllFromCloud()
+        .then((res) => {
+          if (res.success && res.data) {
+            if (res.data.accounts && res.data.accounts.length > 0) {
+              const local = StorageService.getAccounts();
+              const map = new Map<string, StoredAccount>();
+              local.forEach((a) => map.set(a.id, a));
+              res.data.accounts.forEach((a) => map.set(a.id, a));
+              StorageService.saveAccounts(Array.from(map.values()));
+            }
+            if (res.data.schoolConfig) {
+              StorageService.saveSchoolConfig(res.data.schoolConfig);
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }, []);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
@@ -39,17 +63,51 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      const user = StorageService.authenticateUser(username, password);
+    // 1. Check local accounts first
+    let user = StorageService.authenticateUser(username, password);
 
-      if (user) {
-        setIsLoading(false);
-        onLoginSuccess(user);
-      } else {
-        setIsLoading(false);
-        setErrorMsg('Nama pengguna atau kata sandi salah. Silakan periksa kembali kredensial Anda.');
+    // 2. If not found locally, try fetching fresh accounts from Cloud Firestore
+    if (!user && FirebaseService.isConfigured()) {
+      try {
+        const cloudRes = await Promise.race([
+          FirebaseService.pullAllFromCloud(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+        ]);
+
+        if (cloudRes.success && cloudRes.data) {
+          if (cloudRes.data.accounts && cloudRes.data.accounts.length > 0) {
+            const local = StorageService.getAccounts();
+            const map = new Map<string, StoredAccount>();
+            local.forEach((a) => map.set(a.id, a));
+            cloudRes.data.accounts.forEach((a) => map.set(a.id, a));
+            StorageService.saveAccounts(Array.from(map.values()));
+          }
+
+          if (cloudRes.data.schoolConfig) {
+            StorageService.saveSchoolConfig(cloudRes.data.schoolConfig);
+          }
+          if (cloudRes.data.students && cloudRes.data.students.length > 0) {
+            StorageService.saveStudents(cloudRes.data.students);
+          }
+          if (cloudRes.data.allRecords && Object.keys(cloudRes.data.allRecords).length > 0) {
+            localStorage.setItem('rekap_kehadiran_daily_records_v1', JSON.stringify(cloudRes.data.allRecords));
+          }
+
+          // Retry local auth with updated cloud accounts
+          user = StorageService.authenticateUser(username, password);
+        }
+      } catch (err) {
+        console.warn('Cloud pull during login encountered error or timeout:', err);
       }
-    }, 250);
+    }
+
+    setIsLoading(false);
+
+    if (user) {
+      onLoginSuccess(user);
+    } else {
+      setErrorMsg('Nama pengguna atau kata sandi salah. Silakan periksa kembali kredensial Anda.');
+    }
   };
 
   return (

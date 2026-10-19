@@ -55,7 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       id: 'daily' as ActiveTab,
       label: 'Kehadiran Harian',
-      description: 'Absensi harian & waktu',
+      description: 'Presensi harian siswa',
       icon: CalendarCheck,
     },
     {
@@ -153,9 +153,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className="text-sm font-bold tracking-tight text-slate-900 block leading-tight">
                 Rekap Kehadiran
               </span>
-              <span className="text-[11px] text-slate-500 font-medium">
+              <span className="text-[11px] text-slate-500 font-medium block truncate max-w-[150px]">
                 Kelas: {schoolConfig.currentClass}
               </span>
+              {currentUser?.role !== 'admin' && currentUser?.allowedClasses && currentUser.allowedClasses.length > 0 && (
+                <span className="text-[9px] font-bold text-amber-800 bg-amber-50 border border-amber-200/80 px-1 rounded inline-block mt-0.5 max-w-[150px] truncate" title={`Akses Rombel: ${currentUser.allowedClasses.join(', ')}`}>
+                  Rombel: {currentUser.allowedClasses.join(', ')}
+                </span>
+              )}
             </div>
           </div>
           <button

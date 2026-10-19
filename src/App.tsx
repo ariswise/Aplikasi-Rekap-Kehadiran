@@ -9,6 +9,7 @@ import {
   Semester,
   AuthUser,
   KopConfig,
+  StoredAccount,
 } from './types/attendance';
 import { StorageService } from './utils/storage';
 import { FirebaseService } from './utils/firebase';
@@ -89,19 +90,79 @@ export default function App() {
     reason: '',
   });
 
-  // On first mount, if not initialized, seed with sample data so user immediately sees a working app
+  // On first mount, try to sync from Firebase Cloud first, fallback to local storage or seed
   useEffect(() => {
-    if (!StorageService.isInitialized()) {
-      StorageService.seedSampleData();
-      setSchoolConfig(StorageService.getSchoolConfig());
-      setStudents(StorageService.getStudents());
-      setAllRecords(StorageService.getAllAttendanceRecords());
-      addToast(
-        'info',
-        'Selamat Datang di Rekap Kehadiran',
-        'Data simulasi telah disiapkan. Anda dapat mengganti data siswa atau mengimpor dari Excel kapan saja.'
-      );
-    }
+    const initApp = async () => {
+      // 1. Try pulling fresh cloud dataset if Firebase is configured
+      if (FirebaseService.isConfigured()) {
+        try {
+          const cloudRes = await Promise.race([
+            FirebaseService.pullAllFromCloud(),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
+          ]);
+
+          if (cloudRes.success && cloudRes.data) {
+            let hasCloudData = false;
+
+            if (cloudRes.data.schoolConfig) {
+              StorageService.saveSchoolConfig(cloudRes.data.schoolConfig);
+              setSchoolConfig(cloudRes.data.schoolConfig);
+              hasCloudData = true;
+            }
+
+            if (cloudRes.data.students && cloudRes.data.students.length > 0) {
+              StorageService.saveStudents(cloudRes.data.students);
+              setStudents(cloudRes.data.students);
+              hasCloudData = true;
+            }
+
+            if (cloudRes.data.allRecords && Object.keys(cloudRes.data.allRecords).length > 0) {
+              localStorage.setItem('rekap_kehadiran_daily_records_v1', JSON.stringify(cloudRes.data.allRecords));
+              setAllRecords(cloudRes.data.allRecords);
+              hasCloudData = true;
+            }
+
+            if (cloudRes.data.followUpCases && cloudRes.data.followUpCases.length > 0) {
+              StorageService.saveFollowUpCases(cloudRes.data.followUpCases);
+              setFollowUpCases(cloudRes.data.followUpCases);
+              hasCloudData = true;
+            }
+
+            if (cloudRes.data.accounts && cloudRes.data.accounts.length > 0) {
+              const localAccounts = StorageService.getAccounts();
+              const map = new Map<string, StoredAccount>();
+              localAccounts.forEach((a) => map.set(a.id, a));
+              cloudRes.data.accounts.forEach((a) => map.set(a.id, a));
+              StorageService.saveAccounts(Array.from(map.values()));
+              hasCloudData = true;
+            }
+
+            if (hasCloudData) {
+              localStorage.setItem('rekap_kehadiran_initialized_v1', 'true');
+              addToast('info', 'Data Terhubung ke Cloud', 'Data sekolah dan akun telah disinkronkan dari server Cloud Firebase.');
+              return;
+            }
+          }
+        } catch (err) {
+          console.warn('Initial cloud pull timed out or failed, proceeding with local data:', err);
+        }
+      }
+
+      // 2. If no cloud data and not initialized, seed with sample data
+      if (!StorageService.isInitialized()) {
+        StorageService.seedSampleData();
+        setSchoolConfig(StorageService.getSchoolConfig());
+        setStudents(StorageService.getStudents());
+        setAllRecords(StorageService.getAllAttendanceRecords());
+        addToast(
+          'info',
+          'Selamat Datang di Rekap Kehadiran',
+          'Data simulasi telah disiapkan. Anda dapat mengganti data siswa atau mengimpor dari Excel kapan saja.'
+        );
+      }
+    };
+
+    initApp();
   }, []);
 
   // Toast Notification helper
@@ -205,6 +266,47 @@ export default function App() {
     addToast('success', 'Status Disimpan', 'Pembaruan data tindak lanjut siswa berhasil disimpan.');
   };
 
+  // Determine effective available classes for the logged in user based on permissions
+  const effectiveAvailableClasses = useMemo(() => {
+    if (!currentUser || currentUser.role === 'admin') {
+      return schoolConfig.availableClasses;
+    }
+    if (currentUser.allowedClasses && currentUser.allowedClasses.length > 0) {
+      const allowed = schoolConfig.availableClasses.filter((c) =>
+        currentUser.allowedClasses!.includes(c)
+      );
+      return allowed.length > 0 ? allowed : schoolConfig.availableClasses;
+    }
+    return schoolConfig.availableClasses;
+  }, [currentUser, schoolConfig.availableClasses]);
+
+  // Combined schoolConfig reflecting allowed classes
+  const effectiveSchoolConfig = useMemo(() => {
+    return {
+      ...schoolConfig,
+      availableClasses: effectiveAvailableClasses,
+    };
+  }, [schoolConfig, effectiveAvailableClasses]);
+
+  // Ensure current active class is within user's allowed classes
+  useEffect(() => {
+    if (
+      currentUser &&
+      effectiveAvailableClasses.length > 0 &&
+      !effectiveAvailableClasses.includes(schoolConfig.currentClass)
+    ) {
+      handleClassChange(effectiveAvailableClasses[0]);
+    }
+  }, [effectiveAvailableClasses, schoolConfig.currentClass, currentUser]);
+
+  // Students visible according to user's class permissions
+  const visibleStudents = useMemo(() => {
+    if (!currentUser || currentUser.role === 'admin') {
+      return students;
+    }
+    return students.filter((s) => effectiveAvailableClasses.includes(s.classRoom));
+  }, [students, currentUser, effectiveAvailableClasses]);
+
   // Current active class students
   const activeClassStudents = useMemo(() => {
     return students.filter((s) => s.classRoom === schoolConfig.currentClass);
@@ -297,7 +399,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900 selection:bg-blue-600 selection:text-white">
       {/* Top Header */}
       <Header
-        schoolConfig={schoolConfig}
+        schoolConfig={effectiveSchoolConfig}
         currentUser={currentUser}
         onClassChange={handleClassChange}
         activeRole={activeRole}
@@ -314,7 +416,7 @@ export default function App() {
           onTabChange={setActiveTab}
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
-          schoolConfig={schoolConfig}
+          schoolConfig={effectiveSchoolConfig}
           studentCount={activeClassStudents.length}
           followUpAlertCount={followUpAlertCount}
           currentUser={currentUser}
@@ -322,110 +424,119 @@ export default function App() {
         />
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-8 max-w-7xl mx-auto w-full">
-          {activeTab === 'daily' && (
-            <DailyAttendance
-              students={activeClassStudents}
-              schoolConfig={schoolConfig}
-              allRecords={allRecords}
-              onSaveDailyAttendance={handleSaveDailyAttendance}
-              onOpenStudentDetail={setSelectedStudentForDetail}
-              onPrintDaily={handlePrintDaily}
-            />
-          )}
+        <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-8 max-w-7xl mx-auto w-full flex flex-col justify-between">
+          <div className="flex-1 pb-6">
+            {activeTab === 'daily' && (
+              <DailyAttendance
+                students={activeClassStudents}
+                schoolConfig={schoolConfig}
+                allRecords={allRecords}
+                onSaveDailyAttendance={handleSaveDailyAttendance}
+                onOpenStudentDetail={setSelectedStudentForDetail}
+                onPrintDaily={handlePrintDaily}
+              />
+            )}
 
-          {activeTab === 'weekly' && (
-            <WeeklyRecap
-              students={activeClassStudents}
-              schoolConfig={schoolConfig}
-              allRecords={allRecords}
-              onOpenStudentDetail={setSelectedStudentForDetail}
-              onPrintWeekly={handlePrintWeekly}
-            />
-          )}
+            {activeTab === 'weekly' && (
+              <WeeklyRecap
+                students={activeClassStudents}
+                schoolConfig={schoolConfig}
+                allRecords={allRecords}
+                onOpenStudentDetail={setSelectedStudentForDetail}
+                onPrintWeekly={handlePrintWeekly}
+              />
+            )}
 
-          {activeTab === 'monthly' && (
-            <MonthlyRecap
-              students={activeClassStudents}
-              schoolConfig={schoolConfig}
-              allRecords={allRecords}
-              onOpenStudentDetail={setSelectedStudentForDetail}
-              onPrintMonthly={handlePrintMonthly}
-            />
-          )}
+            {activeTab === 'monthly' && (
+              <MonthlyRecap
+                students={activeClassStudents}
+                schoolConfig={schoolConfig}
+                allRecords={allRecords}
+                onOpenStudentDetail={setSelectedStudentForDetail}
+                onPrintMonthly={handlePrintMonthly}
+              />
+            )}
 
-          {activeTab === 'semester' && (
-            <SemesterRecap
-              students={activeClassStudents}
-              schoolConfig={schoolConfig}
-              allRecords={allRecords}
-              onOpenStudentDetail={setSelectedStudentForDetail}
-              onPrintSemester={handlePrintSemester}
-            />
-          )}
+            {activeTab === 'semester' && (
+              <SemesterRecap
+                students={activeClassStudents}
+                schoolConfig={schoolConfig}
+                allRecords={allRecords}
+                onOpenStudentDetail={setSelectedStudentForDetail}
+                onPrintSemester={handlePrintSemester}
+              />
+            )}
 
-          {activeTab === 'charts' && (
-            <AttendanceCharts
-              students={activeClassStudents}
-              schoolConfig={schoolConfig}
-              allRecords={allRecords}
-              onOpenStudentDetail={setSelectedStudentForDetail}
-            />
-          )}
+            {activeTab === 'charts' && (
+              <AttendanceCharts
+                students={activeClassStudents}
+                schoolConfig={schoolConfig}
+                allRecords={allRecords}
+                onOpenStudentDetail={setSelectedStudentForDetail}
+              />
+            )}
 
-          {activeTab === 'followup' && (
-            <FollowUpReports
-              students={activeClassStudents}
-              schoolConfig={schoolConfig}
-              allRecords={allRecords}
-              followUpCases={followUpCases}
-              onSaveFollowUpCases={handleSaveFollowUpCases}
-              onOpenStudentDetail={setSelectedStudentForDetail}
-              onGenerateOfficialLetter={handleGenerateOfficialLetter}
-            />
-          )}
+            {activeTab === 'followup' && (
+              <FollowUpReports
+                students={activeClassStudents}
+                schoolConfig={schoolConfig}
+                allRecords={allRecords}
+                followUpCases={followUpCases}
+                onSaveFollowUpCases={handleSaveFollowUpCases}
+                onOpenStudentDetail={setSelectedStudentForDetail}
+                onGenerateOfficialLetter={handleGenerateOfficialLetter}
+              />
+            )}
 
-          {activeTab === 'all_classes' && currentUser?.role === 'admin' && (
-            <AllClassesRecap
-              students={students}
-              schoolConfig={schoolConfig}
-              allRecords={allRecords}
-              onOpenStudentDetail={setSelectedStudentForDetail}
-              onSwitchClass={handleClassChange}
-              onNavigateToTab={(tab, className) => {
-                setActiveTab(tab);
-              }}
-            />
-          )}
+            {activeTab === 'all_classes' && currentUser?.role === 'admin' && (
+              <AllClassesRecap
+                students={students}
+                schoolConfig={schoolConfig}
+                allRecords={allRecords}
+                onOpenStudentDetail={setSelectedStudentForDetail}
+                onSwitchClass={handleClassChange}
+                onNavigateToTab={(tab, className) => {
+                  setActiveTab(tab);
+                }}
+              />
+            )}
 
-          {activeTab === 'students' && (
-            <StudentManagement
-              students={students}
-              schoolConfig={schoolConfig}
-              onSaveStudents={handleSaveStudents}
-              onShowToast={addToast}
-              onOpenStudentDetail={setSelectedStudentForDetail}
-            />
-          )}
+            {activeTab === 'students' && (
+              <StudentManagement
+                students={visibleStudents}
+                schoolConfig={effectiveSchoolConfig}
+                onSaveStudents={handleSaveStudents}
+                onShowToast={addToast}
+                onOpenStudentDetail={setSelectedStudentForDetail}
+              />
+            )}
 
-          {activeTab === 'users' && currentUser?.role === 'admin' && (
-            <UserManagement
-              currentUser={currentUser}
-              onShowToast={addToast}
-            />
-          )}
+            {activeTab === 'users' && currentUser?.role === 'admin' && (
+              <UserManagement
+                currentUser={currentUser}
+                availableClasses={schoolConfig.availableClasses}
+                onShowToast={addToast}
+                onUpdateCurrentUser={setCurrentUser}
+              />
+            )}
 
-          {activeTab === 'settings' && (
-            <SchoolSettings
-              schoolConfig={schoolConfig}
-              onSaveSchoolConfig={handleSaveSchoolConfig}
-              onReloadAllData={reloadAllData}
-              onShowToast={addToast}
-              students={students}
-              allRecords={allRecords}
-              followUpCases={followUpCases}
-            />
-          )}
+            {activeTab === 'settings' && (
+              <SchoolSettings
+                schoolConfig={schoolConfig}
+                onSaveSchoolConfig={handleSaveSchoolConfig}
+                onReloadAllData={reloadAllData}
+                onShowToast={addToast}
+                students={students}
+                allRecords={allRecords}
+                followUpCases={followUpCases}
+              />
+            )}
+          </div>
+
+          {/* Bottom Footer on every menu page */}
+          <footer className="mt-12 pt-6 pb-4 border-t border-slate-200 text-center text-xs text-slate-500 font-medium no-print">
+            Dikembangkan Oleh : Aris Wicaksono, S.Pd.
+          </footer>
         </main>
       </div>
 

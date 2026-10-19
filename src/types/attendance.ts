@@ -68,6 +68,7 @@ export interface AuthUser {
   name: string;
   role: UserRole;
   nip?: string;
+  allowedClasses?: string[]; // Hak akses spesifik rombel/kelas (hanya rombel tertentu yang dapat diakses)
 }
 
 export interface StoredAccount {
@@ -77,6 +78,7 @@ export interface StoredAccount {
   name: string;
   role: UserRole;
   nip?: string;
+  allowedClasses?: string[]; // Hak akses spesifik rombel/kelas
   createdAt: string;
 }
 

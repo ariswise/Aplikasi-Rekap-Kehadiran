@@ -182,7 +182,7 @@ export const ExcelService = {
         ? entry.lateMinutes
           ? `Ya (${entry.lateMinutes} menit)`
           : 'Ya (Terlambat)'
-        : 'Tidak (Tepat Waktu)';
+        : 'Tidak';
 
       return {
         'No': index + 1,
@@ -192,7 +192,6 @@ export const ExcelService = {
         'L/P': s.gender,
         'Status Kehadiran': statusText,
         'Terlambat': terlambatText,
-        'Waktu Datang': entry?.arrivalTime || '-',
         'Keterangan': entry?.notes || '-',
       };
     });

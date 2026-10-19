@@ -403,7 +403,7 @@ export const MonthlyRecap: React.FC<MonthlyRecapProps> = ({
         </div>
         <div className="border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-500 flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-1.5">
-            <span className="font-extrabold text-emerald-700 text-sm">•</span> = Hadir Tepat Waktu
+            <span className="font-extrabold text-emerald-700 text-sm">•</span> = Hadir
           </div>
           <div className="flex items-center gap-1.5">
             <span className="bg-amber-100 text-amber-900 font-bold px-1.5 py-0.5 rounded-xs text-[10px] ring-1 ring-amber-300">T</span> = Hadir Terlambat

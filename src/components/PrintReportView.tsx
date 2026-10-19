@@ -169,8 +169,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                   <th className="border border-slate-400 px-2 py-2 w-20">NIS</th>
                   <th className="border border-slate-400 px-3 py-2">Nama Peserta Didik</th>
                   <th className="border border-slate-400 px-2 py-2 text-center w-10">L/P</th>
-                  <th className="border border-slate-400 px-2 py-2 text-center w-24">Status</th>
-                  <th className="border border-slate-400 px-2 py-2 text-center w-20">Waktu</th>
+                  <th className="border border-slate-400 px-2 py-2 text-center w-28">Status</th>
                   <th className="border border-slate-400 px-3 py-2">Keterangan</th>
                 </tr>
               </thead>
@@ -178,9 +177,12 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                 {students.map((student, idx) => {
                   const entry = dailyRecord.entries[student.id];
                   const status = entry?.status || 'unmarked';
+                  const isLate = !!entry?.isLate;
                   const label =
                     status === 'hadir'
-                      ? 'Hadir'
+                      ? isLate
+                        ? 'Hadir (Terlambat)'
+                        : 'Hadir'
                       : status === 'sakit'
                       ? 'Sakit'
                       : status === 'izin'
@@ -195,8 +197,9 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                       <td className="border border-slate-400 px-2 py-1.5">{student.nis}</td>
                       <td className="border border-slate-400 px-3 py-1.5 font-medium">{student.name}</td>
                       <td className="border border-slate-400 px-2 py-1.5 text-center">{student.gender}</td>
-                      <td className="border border-slate-400 px-2 py-1.5 text-center font-bold">{label}</td>
-                      <td className="border border-slate-400 px-2 py-1.5 text-center">{entry?.arrivalTime || '-'}</td>
+                      <td className="border border-slate-400 px-2 py-1.5 text-center font-bold">
+                        <span className={isLate ? 'text-amber-800' : ''}>{label}</span>
+                      </td>
                       <td className="border border-slate-400 px-3 py-1.5 text-slate-700">{entry?.notes || '-'}</td>
                     </tr>
                   );

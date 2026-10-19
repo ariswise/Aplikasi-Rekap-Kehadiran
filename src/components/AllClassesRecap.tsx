@@ -27,6 +27,8 @@ import {
   Award,
   TrendingUp,
   X,
+  UserCheck,
+  PenLine,
 } from 'lucide-react';
 
 interface AllClassesRecapProps {
@@ -62,6 +64,16 @@ export const AllClassesRecap: React.FC<AllClassesRecapProps> = ({
 
   // Print Modal
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+
+  // Signer customization for the second party (sisi satunya / kanan)
+  type SecondSignerChoice = 'guru_bk' | 'admin' | 'custom';
+  const [secondSignerChoice, setSecondSignerChoice] = useState<SecondSignerChoice>('guru_bk');
+  const [secondSignerRoleTitle, setSecondSignerRoleTitle] = useState<string>('Guru Bimbingan Konseling (BK)');
+  const [secondSignerName, setSecondSignerName] = useState<string>(schoolConfig.counselorTeacher || 'Guru BK');
+  const [secondSignerNip, setSecondSignerNip] = useState<string>(schoolConfig.counselorTeacherNip || '-');
+  const [showSecondSigner, setShowSecondSigner] = useState<boolean>(true);
+  const [customSignCity, setCustomSignCity] = useState<string>(schoolConfig.city || 'Kota');
+  const [customSignDate, setCustomSignDate] = useState<string>(new Date().toISOString().slice(0, 10));
 
   // Month navigation
   const handleStepMonth = (step: number) => {
@@ -983,6 +995,133 @@ export const AllClassesRecap: React.FC<AllClassesRecapProps> = ({
               </div>
             </div>
 
+            {/* Signer Customization Panel (hidden on print) */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3 print:hidden">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <PenLine className="h-3.5 w-3.5 text-blue-600" />
+                  Pengaturan Penandatangan (Sisi Kanan)
+                </span>
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={showSecondSigner}
+                    onChange={(e) => setShowSecondSigner(e.target.checked)}
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  Tampilkan Tanda Tangan Sisi Kanan
+                </label>
+              </div>
+
+              {showSecondSigner && (
+                <div className="space-y-3 pt-2 border-t border-slate-200/80">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                        Pihak Penandatangan Sisi Kanan:
+                      </label>
+                      <select
+                        value={secondSignerChoice}
+                        onChange={(e) => {
+                          const val = e.target.value as SecondSignerChoice;
+                          setSecondSignerChoice(val);
+                          if (val === 'guru_bk') {
+                            setSecondSignerRoleTitle('Guru Bimbingan Konseling (BK)');
+                            setSecondSignerName(schoolConfig.counselorTeacher || 'Guru BK');
+                            setSecondSignerNip(schoolConfig.counselorTeacherNip || '-');
+                          } else if (val === 'admin') {
+                            setSecondSignerRoleTitle('Petugas / Administrator Sekolah');
+                            setSecondSignerName('Administrator Sekolah');
+                            setSecondSignerNip('-');
+                          }
+                        }}
+                        className="w-full text-xs rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-slate-800 font-semibold focus:border-blue-500 focus:outline-none"
+                      >
+                        <option value="guru_bk">Guru BK (Isian Data Guru BK)</option>
+                        <option value="admin">Petugas / Administrator Sekolah</option>
+                        <option value="custom">Kustom / Manual</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                        Kota Titimangsa
+                      </label>
+                      <input
+                        type="text"
+                        value={customSignCity}
+                        onChange={(e) => setCustomSignCity(e.target.value)}
+                        placeholder="Contoh: Jakarta Selatan"
+                        className="w-full text-xs rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-slate-800 focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                        Tanggal Tanda Tangan
+                      </label>
+                      <input
+                        type="date"
+                        value={customSignDate}
+                        onChange={(e) => setCustomSignDate(e.target.value)}
+                        className="w-full text-xs rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-slate-800 focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                        Jabatan Penandatangan
+                      </label>
+                      <input
+                        type="text"
+                        value={secondSignerRoleTitle}
+                        onChange={(e) => {
+                          setSecondSignerRoleTitle(e.target.value);
+                          setSecondSignerChoice('custom');
+                        }}
+                        placeholder="Contoh: Guru Bimbingan Konseling (BK)"
+                        className="w-full text-xs rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-slate-800 focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                        Nama Penandatangan
+                      </label>
+                      <input
+                        type="text"
+                        value={secondSignerName}
+                        onChange={(e) => {
+                          setSecondSignerName(e.target.value);
+                          setSecondSignerChoice('custom');
+                        }}
+                        placeholder="Nama Lengkap & Gelar"
+                        className="w-full text-xs rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-slate-800 font-semibold focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                        NIP Penandatangan
+                      </label>
+                      <input
+                        type="text"
+                        value={secondSignerNip}
+                        onChange={(e) => {
+                          setSecondSignerNip(e.target.value);
+                          setSecondSignerChoice('custom');
+                        }}
+                        placeholder="NIP atau -"
+                        className="w-full text-xs rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-slate-800 focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Printable Document Area */}
             <div className="space-y-6 text-slate-900">
               {/* Official Kop Surat */}
@@ -1060,30 +1199,38 @@ export const AllClassesRecap: React.FC<AllClassesRecapProps> = ({
               </div>
 
               {/* Signatures */}
-              <div className="grid grid-cols-2 gap-8 pt-6 text-xs text-center">
+              <div className="grid grid-cols-2 gap-8 pt-8 text-xs text-center">
+                {/* Sisi Kiri: Kepala Sekolah */}
                 <div className="space-y-16">
                   <div>
                     <p className="text-slate-500">Mengetahui,</p>
                     <p className="font-semibold text-slate-800">Kepala Satuan Pendidikan</p>
                   </div>
                   <div>
-                    <p className="font-bold underline text-slate-900">{schoolConfig.headmaster}</p>
+                    <p className="font-bold underline text-slate-900 uppercase">{schoolConfig.headmaster}</p>
                     <p className="text-[11px] text-slate-500 font-mono-numbers">NIP. {schoolConfig.headmasterNip}</p>
                   </div>
                 </div>
 
-                <div className="space-y-16">
-                  <div>
-                    <p className="text-slate-500">
-                      {schoolConfig.city || 'Kota'}, {formatIndonesianDate(new Date().toISOString().slice(0, 10))}
-                    </p>
-                    <p className="font-semibold text-slate-800">Petugas / Administrator Sekolah</p>
+                {/* Sisi Kanan: Pihak Kedua (Guru BK / Petugas / Kustom) */}
+                {showSecondSigner ? (
+                  <div className="space-y-16">
+                    <div>
+                      <p className="text-slate-500">
+                        {customSignCity}, {formatIndonesianDate(customSignDate)}
+                      </p>
+                      <p className="font-semibold text-slate-800">{secondSignerRoleTitle}</p>
+                    </div>
+                    <div>
+                      <p className="font-bold underline text-slate-900 uppercase">{secondSignerName}</p>
+                      <p className="text-[11px] text-slate-500 font-mono-numbers">
+                        {secondSignerNip && secondSignerNip !== '-' ? `NIP. ${secondSignerNip}` : ''}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-bold underline text-slate-900">Administrator Sekolah</p>
-                    <p className="text-[11px] text-slate-500 font-mono-numbers">Sistem Informasi Kehadiran</p>
-                  </div>
-                </div>
+                ) : (
+                  <div />
+                )}
               </div>
             </div>
           </div>

@@ -214,8 +214,7 @@ export const IndividualRecapModal: React.FC<IndividualRecapModalProps> = ({
                   <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600">
                     <tr>
                       <th className="px-3 py-2">Tanggal</th>
-                      <th className="px-3 py-2 text-center w-24">Status</th>
-                      <th className="px-3 py-2 w-28">Waktu Datang</th>
+                      <th className="px-3 py-2 text-center w-28">Status</th>
                       <th className="px-3 py-2">Keterangan</th>
                     </tr>
                   </thead>
@@ -244,16 +243,6 @@ export const IndividualRecapModal: React.FC<IndividualRecapModalProps> = ({
                             >
                               {item.status.toUpperCase()}
                             </span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 font-mono-numbers text-slate-600">
-                          {item.arrivalTime ? (
-                            <span className={item.isLate ? 'text-amber-800 font-semibold' : ''}>
-                              {item.arrivalTime}
-                              {item.lateMinutes ? ` (+${item.lateMinutes}m)` : ''}
-                            </span>
-                          ) : (
-                            '-'
                           )}
                         </td>
                         <td className="px-3 py-2 text-slate-600">

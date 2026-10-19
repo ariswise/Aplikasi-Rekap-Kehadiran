@@ -1,6 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { StoredAccount, UserRole, AuthUser } from '../types/attendance';
 import { StorageService } from '../utils/storage';
+import { FirebaseService, getFirestoreDb } from '../utils/firebase';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import {
   Users,
   UserPlus,
@@ -16,16 +18,23 @@ import {
   Eye,
   EyeOff,
   Lock,
+  Cloud,
+  RefreshCw,
+  BookOpen,
 } from 'lucide-react';
 
 interface UserManagementProps {
   currentUser: AuthUser;
+  availableClasses?: string[];
   onShowToast: (type: 'success' | 'error' | 'info' | 'warning', title: string, message: string) => void;
+  onUpdateCurrentUser?: (user: AuthUser) => void;
 }
 
 export const UserManagement: React.FC<UserManagementProps> = ({
   currentUser,
+  availableClasses = [],
   onShowToast,
+  onUpdateCurrentUser,
 }) => {
   const [accounts, setAccounts] = useState<StoredAccount[]>(() =>
     StorageService.getAccounts()
@@ -37,12 +46,73 @@ export const UserManagement: React.FC<UserManagementProps> = ({
   // Form states
   const [formName, setFormName] = useState<string>('');
   const [formUsername, setFormUsername] = useState<string>('');
-  const [formRole, setFormRole] = useState<UserRole>('guru_bk');
+  const [formRole, setFormRole] = useState<UserRole>('wali_kelas');
   const [formNip, setFormNip] = useState<string>('');
   const [formPassword, setFormPassword] = useState<string>('');
   const [formConfirmPassword, setFormConfirmPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [formError, setFormError] = useState<string>('');
+
+  // Class permissions state (for non-admin accounts)
+  const [formAccessMode, setFormAccessMode] = useState<'all' | 'custom'>('all');
+  const [formSelectedClasses, setFormSelectedClasses] = useState<string[]>([]);
+
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
+
+  // Sync accounts from cloud on component mount
+  useEffect(() => {
+    if (FirebaseService.isConfigured()) {
+      FirebaseService.pullAllFromCloud()
+        .then((res) => {
+          if (res.success && res.data?.accounts && res.data.accounts.length > 0) {
+            const cloudAccounts = res.data.accounts;
+            const currentLocal = StorageService.getAccounts();
+            const map = new Map<string, StoredAccount>();
+            currentLocal.forEach((a) => map.set(a.id, a));
+            cloudAccounts.forEach((a) => map.set(a.id, a));
+            const merged = Array.from(map.values());
+            setAccounts(merged);
+            StorageService.saveAccounts(merged);
+          }
+        })
+        .catch((err) => {
+          console.warn('Silent cloud pull accounts failed:', err);
+        });
+    }
+  }, []);
+
+  const handleManualSyncCloud = async () => {
+    setIsSyncingCloud(true);
+    try {
+      const currentAccounts = StorageService.getAccounts();
+      const db = getFirestoreDb();
+
+      // 1. Upload all local accounts to Firestore
+      for (const acc of currentAccounts) {
+        await setDoc(doc(db, 'accounts', acc.id), {
+          ...acc,
+          syncedAt: new Date().toISOString(),
+        });
+      }
+
+      // 2. Pull back any new accounts from Firestore
+      const res = await FirebaseService.pullAllFromCloud();
+      if (res.success && res.data?.accounts) {
+        const map = new Map<string, StoredAccount>();
+        currentAccounts.forEach((a) => map.set(a.id, a));
+        res.data.accounts.forEach((a) => map.set(a.id, a));
+        const merged = Array.from(map.values());
+        setAccounts(merged);
+        StorageService.saveAccounts(merged);
+      }
+
+      onShowToast('success', 'Sinkronisasi Akun Sukses', `${currentAccounts.length} akun berhasil disinkronkan ke Cloud Firebase. Akun kini aktif di semua URL/perangkat!`);
+    } catch (e: any) {
+      onShowToast('error', 'Gagal Sinkronisasi', e?.message || 'Tidak dapat terhubung ke cloud.');
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
 
   const filteredAccounts = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -58,11 +128,13 @@ export const UserManagement: React.FC<UserManagementProps> = ({
     setEditingAccount(null);
     setFormName('');
     setFormUsername('');
-    setFormRole('guru_bk');
+    setFormRole('wali_kelas');
     setFormNip('');
     setFormPassword('');
     setFormConfirmPassword('');
     setShowPassword(false);
+    setFormAccessMode('all');
+    setFormSelectedClasses([]);
     setFormError('');
     setIsModalOpen(true);
   };
@@ -76,11 +148,18 @@ export const UserManagement: React.FC<UserManagementProps> = ({
     setFormPassword(''); // blank means keep current password unless filled
     setFormConfirmPassword('');
     setShowPassword(false);
+    if (account.allowedClasses && account.allowedClasses.length > 0) {
+      setFormAccessMode('custom');
+      setFormSelectedClasses(account.allowedClasses);
+    } else {
+      setFormAccessMode('all');
+      setFormSelectedClasses([]);
+    }
     setFormError('');
     setIsModalOpen(true);
   };
 
-  const handleSaveAccount = (e: React.FormEvent) => {
+  const handleSaveAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError('');
 
@@ -100,6 +179,17 @@ export const UserManagement: React.FC<UserManagementProps> = ({
       return;
     }
 
+    // Validate class access for non-admin accounts
+    if (formRole !== 'admin' && formAccessMode === 'custom' && formSelectedClasses.length === 0) {
+      setFormError('Harap pilih minimal 1 rombel/kelas yang diizinkan untuk akun ini.');
+      return;
+    }
+
+    const finalAllowedClasses =
+      formRole === 'admin' || formAccessMode === 'all'
+        ? undefined
+        : formSelectedClasses;
+
     if (!editingAccount) {
       // Adding new account
       if (!formPassword) {
@@ -118,13 +208,26 @@ export const UserManagement: React.FC<UserManagementProps> = ({
         name: formName.trim(),
         role: formRole,
         nip: formNip.trim() || undefined,
+        allowedClasses: finalAllowedClasses,
         createdAt: new Date().toISOString(),
       };
 
       const updated = [...accounts, newAcc];
       setAccounts(updated);
       StorageService.saveAccounts(updated);
-      onShowToast('success', 'Akun Berhasil Dibuat', `Akun ${newAcc.name} (${newAcc.username}) berhasil ditambahkan.`);
+
+      // Auto-sync to Cloud Firestore so account works on published URL and all devices
+      try {
+        const db = getFirestoreDb();
+        await setDoc(doc(db, 'accounts', newAcc.id), {
+          ...newAcc,
+          syncedAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.warn('Silent cloud account upload error:', err);
+      }
+
+      onShowToast('success', 'Akun Berhasil Dibuat', `Akun ${newAcc.name} (${newAcc.username}) berhasil ditambahkan dan disinkronkan ke Cloud.`);
       setIsModalOpen(false);
     } else {
       // Editing existing account
@@ -133,32 +236,67 @@ export const UserManagement: React.FC<UserManagementProps> = ({
         return;
       }
 
+      let updatedTargetAcc: StoredAccount | null = null;
       const updated = accounts.map((a) => {
         if (a.id === editingAccount.id) {
-          return {
+          const mod: StoredAccount = {
             ...a,
             username: cleanUsername,
             name: formName.trim(),
             role: formRole,
             nip: formNip.trim() || undefined,
+            allowedClasses: finalAllowedClasses,
             password: formPassword ? formPassword : a.password, // keep existing password if not updated
           };
+          updatedTargetAcc = mod;
+          return mod;
         }
         return a;
       });
 
       setAccounts(updated);
       StorageService.saveAccounts(updated);
+
+      // If active user is the one being edited, update active session
+      if (currentUser.id === editingAccount.id) {
+        const updatedCurrentUser: AuthUser = {
+          ...currentUser,
+          name: formName.trim(),
+          username: cleanUsername,
+          role: formRole,
+          nip: formNip.trim() || undefined,
+          allowedClasses: finalAllowedClasses,
+        };
+        StorageService.setLoggedInUser(updatedCurrentUser);
+        if (onUpdateCurrentUser) {
+          onUpdateCurrentUser(updatedCurrentUser);
+        }
+      }
+
+      // Auto-sync to Cloud Firestore
+      if (updatedTargetAcc) {
+        const targetAcc: StoredAccount = updatedTargetAcc;
+        try {
+          const db = getFirestoreDb();
+          await setDoc(doc(db, 'accounts', targetAcc.id), {
+            ...targetAcc,
+            syncedAt: new Date().toISOString(),
+          });
+        } catch (err) {
+          console.warn('Silent cloud account update error:', err);
+        }
+      }
+
       onShowToast(
         'success',
         'Akun Diperbarui',
-        `Data akun ${formName} berhasil diperbarui${formPassword ? ' beserta kata sandi baru' : ''}.`
+        `Data akun ${formName} berhasil diperbarui${formPassword ? ' beserta kata sandi baru' : ''} di Cloud.`
       );
       setIsModalOpen(false);
     }
   };
 
-  const handleDeleteAccount = (account: StoredAccount) => {
+  const handleDeleteAccount = async (account: StoredAccount) => {
     if (account.username === 'admin') {
       onShowToast('error', 'Tidak Dapat Dihapus', 'Akun Administrator utama tidak boleh dihapus.');
       return;
@@ -173,7 +311,16 @@ export const UserManagement: React.FC<UserManagementProps> = ({
       const updated = accounts.filter((a) => a.id !== account.id);
       setAccounts(updated);
       StorageService.saveAccounts(updated);
-      onShowToast('info', 'Akun Dihapus', `Akun ${account.name} telah dihapus dari sistem.`);
+
+      // Auto-delete from Cloud Firestore
+      try {
+        const db = getFirestoreDb();
+        await deleteDoc(doc(db, 'accounts', account.id));
+      } catch (err) {
+        console.warn('Silent cloud account delete error:', err);
+      }
+
+      onShowToast('info', 'Akun Dihapus', `Akun ${account.name} telah dihapus dari sistem dan cloud.`);
     }
   };
 
@@ -226,14 +373,27 @@ export const UserManagement: React.FC<UserManagementProps> = ({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleOpenAddModal}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-blue-700 transition-colors shadow-2xs"
-        >
-          <UserPlus className="h-4 w-4" />
-          Tambah Akun Baru
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleManualSyncCloud}
+            disabled={isSyncingCloud}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs disabled:opacity-50"
+            title="Sinkronkan seluruh akun ke Cloud Firebase agar dapat diakses dari domain publish dan perangkat lain"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 text-blue-600 ${isSyncingCloud ? 'animate-spin' : ''}`} />
+            <span>{isSyncingCloud ? 'Menyinkronkan...' : 'Sinkronkan Akun ke Cloud'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleOpenAddModal}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-blue-700 transition-colors shadow-2xs"
+          >
+            <UserPlus className="h-4 w-4" />
+            Tambah Akun Baru
+          </button>
+        </div>
       </div>
 
       {/* Search Toolbar */}
@@ -260,6 +420,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                 <th scope="col" className="px-4 py-3">Nama Lengkap & NIP</th>
                 <th scope="col" className="px-4 py-3">Nama Pengguna (Username)</th>
                 <th scope="col" className="px-4 py-3">Hak Akses / Peran</th>
+                <th scope="col" className="px-4 py-3">Hak Akses Rombel</th>
                 <th scope="col" className="px-4 py-3 text-center">Status Sandi</th>
                 <th scope="col" className="w-28 px-3 py-3 text-center">Aksi</th>
               </tr>
@@ -293,6 +454,29 @@ export const UserManagement: React.FC<UserManagementProps> = ({
 
                     <td className="px-4 py-3">
                       {getRoleBadge(account.role)}
+                    </td>
+
+                    <td className="px-4 py-3">
+                      {account.role === 'admin' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                          Semua Rombel (Admin)
+                        </span>
+                      ) : !account.allowedClasses || account.allowedClasses.length === 0 ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700">
+                          Semua Rombel
+                        </span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1 max-w-[200px]">
+                          {account.allowedClasses.map((cls) => (
+                            <span
+                              key={cls}
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200"
+                            >
+                              {cls}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </td>
 
                     <td className="px-4 py-3 text-center text-xs text-slate-500">
@@ -335,7 +519,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({
       {/* Add / Edit Account Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl border border-slate-200">
+          <div className="w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl border border-slate-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <KeyRound className="h-4 w-4 text-blue-600" />
@@ -417,6 +601,128 @@ export const UserManagement: React.FC<UserManagementProps> = ({
                   placeholder="19850101 201001 2 001"
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none"
                 />
+              </div>
+
+              {/* Hak Akses Rombel / Kelas (Khusus akun selain Admin) */}
+              <div className="pt-2 border-t border-slate-100 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Shield className="h-3.5 w-3.5 text-blue-600" />
+                    Hak Akses Rombel / Kelas
+                  </label>
+                  {formRole !== 'admin' && (
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      {formAccessMode === 'all'
+                        ? 'Semua rombel'
+                        : `${formSelectedClasses.length} rombel dipilih`}
+                    </span>
+                  )}
+                </div>
+
+                {formRole === 'admin' ? (
+                  <div className="rounded-lg bg-blue-50 p-2.5 text-xs text-blue-800 border border-blue-200 flex items-center gap-2">
+                    <Shield className="h-4 w-4 text-blue-600 shrink-0" />
+                    <span>
+                      Administrator memiliki hak akses penuh ke seluruh rombel/kelas di sekolah.
+                    </span>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-5 text-xs">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="accessMode"
+                          checked={formAccessMode === 'all'}
+                          onChange={() => setFormAccessMode('all')}
+                          className="text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="font-semibold text-slate-700">Akses Semua Kelas</span>
+                      </label>
+
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="accessMode"
+                          checked={formAccessMode === 'custom'}
+                          onChange={() => setFormAccessMode('custom')}
+                          className="text-blue-600 focus:ring-blue-500"
+                        />
+                        <span className="font-semibold text-slate-700">Hanya Rombel Tertentu</span>
+                      </label>
+                    </div>
+
+                    {formAccessMode === 'custom' && (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-semibold text-slate-700 flex items-center gap-1">
+                            <BookOpen className="h-3.5 w-3.5 text-indigo-600" />
+                            Centang Rombel yang Ditugaskan:
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setFormSelectedClasses([...availableClasses])}
+                              className="text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                              Pilih Semua
+                            </button>
+                            <span className="text-slate-300">·</span>
+                            <button
+                              type="button"
+                              onClick={() => setFormSelectedClasses([])}
+                              className="text-[10px] font-bold text-rose-600 hover:text-rose-800 hover:underline"
+                            >
+                              Kosongkan
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-36 overflow-y-auto pr-1">
+                          {availableClasses.map((cls) => {
+                            const isChecked = formSelectedClasses.includes(cls);
+                            return (
+                              <label
+                                key={cls}
+                                className={`flex items-center gap-2 p-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
+                                  isChecked
+                                    ? 'bg-blue-50 border-blue-400 text-blue-900 font-bold shadow-2xs'
+                                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setFormSelectedClasses([...formSelectedClasses, cls]);
+                                    } else {
+                                      setFormSelectedClasses(
+                                        formSelectedClasses.filter((c) => c !== cls)
+                                      );
+                                    }
+                                  }}
+                                  className="rounded text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="truncate">{cls}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+
+                        {formSelectedClasses.length === 0 ? (
+                          <p className="text-[10px] text-amber-700 font-medium">
+                            * Wajib mencentang minimal 1 kelas agar akun dapat mengakses data kehadiran rombel terkait.
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-emerald-700 font-medium">
+                            ✓ Akun ini hanya dapat melihat data rombel: {formSelectedClasses.join(', ')}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Password Fields */}

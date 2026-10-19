@@ -49,15 +49,6 @@ export const DEFAULT_ACCOUNTS: StoredAccount[] = [
     nip: '19790812 200312 1 004',
     createdAt: new Date().toISOString(),
   },
-  {
-    id: 'acc-bk-01',
-    username: 'gurubk',
-    password: 'bk123',
-    name: 'Siti Rahmawati, S.Psi., M.Pd.',
-    role: 'guru_bk',
-    nip: '19860920 201001 2 015',
-    createdAt: new Date().toISOString(),
-  },
 ];
 
 export const DEFAULT_SCHOOL_CONFIG: SchoolConfig = {
@@ -72,8 +63,8 @@ export const DEFAULT_SCHOOL_CONFIG: SchoolConfig = {
   availableClasses: ['X-MIPA 1', 'X-MIPA 2', 'XI-MIPA 1', 'XII-MIPA 1'],
   homeroomTeacher: 'Budi Santoso, S.Pd., M.Pd.',
   homeroomTeacherNip: '19820415 200801 1 008',
-  counselorTeacher: 'Siti Rahmawati, S.Psi., M.Pd.',
-  counselorTeacherNip: '19860920 201001 2 015',
+  counselorTeacher: 'Guru Bimbingan Konseling',
+  counselorTeacherNip: '-',
   headmaster: 'Drs. H. Mulyadi, M.M.',
   headmasterNip: '19700312 199512 1 002',
   city: 'Jakarta Selatan',
@@ -409,7 +400,13 @@ export const StorageService = {
       if (data) {
         const parsed: StoredAccount[] = JSON.parse(data);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          const cleaned = parsed.filter(
+            (a) => a.id !== 'acc-bk-01' && a.username !== 'gurubk' && !a.name.includes('Siti Rahmawati')
+          );
+          if (cleaned.length !== parsed.length) {
+            this.saveAccounts(cleaned);
+          }
+          return cleaned.length > 0 ? cleaned : DEFAULT_ACCOUNTS;
         }
       }
     } catch (e) {
@@ -440,6 +437,7 @@ export const StorageService = {
         name: matched.name,
         role: matched.role,
         nip: matched.nip,
+        allowedClasses: matched.allowedClasses,
       };
     }
 
