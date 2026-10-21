@@ -6,6 +6,7 @@ import {
   Semester,
 } from '../types/attendance';
 import { INDONESIAN_MONTHS, getDaysInMonth, getSemesterMonths, formatIndonesianDate } from '../utils/date';
+import { sortStudentsAlphabetically } from '../utils/storage';
 import { KopSuratView } from './KopSuratView';
 import * as XLSX from 'xlsx';
 import {
@@ -90,7 +91,7 @@ export const AllClassesRecap: React.FC<AllClassesRecapProps> = ({
     setSelectedYear(nextYear);
   };
 
-  // Group students by class
+  // Group students by class (strictly sorted A-Z in each class)
   const studentsByClass = useMemo(() => {
     const map: Record<string, Student[]> = {};
     schoolConfig.availableClasses.forEach((cls) => {
@@ -101,6 +102,9 @@ export const AllClassesRecap: React.FC<AllClassesRecapProps> = ({
         map[s.classRoom] = [];
       }
       map[s.classRoom].push(s);
+    });
+    Object.keys(map).forEach((cls) => {
+      map[cls] = sortStudentsAlphabetically(map[cls]);
     });
     return map;
   }, [students, schoolConfig.availableClasses]);

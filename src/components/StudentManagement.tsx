@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { Student, SchoolConfig, Gender } from '../types/attendance';
 import { ExcelService } from '../utils/excel';
+import { sortStudentsAlphabetically } from '../utils/storage';
 import {
   Users,
   UserPlus,
@@ -54,13 +55,14 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
   const [formAddress, setFormAddress] = useState<string>('');
   const [formNotes, setFormNotes] = useState<string>('');
 
-  // Filtered students for current active class
+  // Filtered students for current active class (strictly sorted A-Z)
   const classStudents = useMemo(() => {
-    return students.filter((s) => s.classRoom === schoolConfig.currentClass);
+    const list = students.filter((s) => s.classRoom === schoolConfig.currentClass);
+    return sortStudentsAlphabetically(list);
   }, [students, schoolConfig.currentClass]);
 
   const filteredStudents = useMemo(() => {
-    return classStudents.filter((s) => {
+    const filtered = classStudents.filter((s) => {
       const q = searchQuery.toLowerCase();
       return (
         s.name.toLowerCase().includes(q) ||
@@ -68,6 +70,7 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
         s.nisn.toLowerCase().includes(q)
       );
     });
+    return sortStudentsAlphabetically(filtered);
   }, [classStudents, searchQuery]);
 
   const handleOpenAddModal = () => {

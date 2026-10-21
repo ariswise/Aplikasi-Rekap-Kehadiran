@@ -39,6 +39,41 @@ const STORAGE_KEYS = {
   HAS_INITIALIZED: 'rekap_kehadiran_initialized_v1',
 };
 
+/**
+ * Strictly sorts students alphabetically by their full name (A - Z).
+ * Handles:
+ * - Leading / trailing whitespace (trim)
+ * - Multiple consecutive spaces
+ * - Indonesian / Latin characters & accent variations
+ * - Case insensitivity
+ * - Safe null / undefined fallback
+ * - Secondary deterministic sort by NIS
+ */
+export function sortStudentsAlphabetically<T extends { name?: string; nis?: string }>(list: T[]): T[] {
+  if (!Array.isArray(list)) return [];
+  return [...list].sort((a, b) => {
+    const rawA = (a?.name || '').trim().replace(/\s+/g, ' ');
+    const rawB = (b?.name || '').trim().replace(/\s+/g, ' ');
+
+    // 1. Primary: Intl.Collator with Indonesian / standard locale
+    const cmp = rawA.localeCompare(rawB, 'id', {
+      sensitivity: 'accent',
+      caseFirst: 'upper',
+      numeric: true,
+    });
+    if (cmp !== 0) return cmp;
+
+    // 2. Fallback lowercase direct comparison if collator returned 0
+    const lowerA = rawA.toLowerCase();
+    const lowerB = rawB.toLowerCase();
+    if (lowerA < lowerB) return -1;
+    if (lowerA > lowerB) return 1;
+
+    // 3. Fallback to NIS for deterministic stability
+    return (a?.nis || '').localeCompare(b?.nis || '', undefined, { numeric: true });
+  });
+}
+
 export const DEFAULT_ACCOUNTS: StoredAccount[] = [
   {
     id: 'acc-admin-01',
@@ -449,10 +484,8 @@ export const StorageService = {
       const data = localStorage.getItem(STORAGE_KEYS.STUDENTS);
       if (data) {
         const list: Student[] = JSON.parse(data);
-        if (classRoom) {
-          return list.filter((s) => s.classRoom === classRoom);
-        }
-        return list;
+        const filtered = classRoom ? list.filter((s) => s.classRoom === classRoom) : list;
+        return sortStudentsAlphabetically(filtered);
       }
     } catch (e) {
       console.error('Failed to read students', e);
@@ -461,7 +494,8 @@ export const StorageService = {
   },
 
   saveStudents(students: Student[]): void {
-    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
+    const sorted = sortStudentsAlphabetically(students);
+    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(sorted));
   },
 
   getAllAttendanceRecords(): Record<string, DailyAttendanceRecord> {
@@ -555,7 +589,7 @@ export const StorageService = {
         return { success: false, message: 'Format berkas JSON cadangan tidak valid.' };
       }
       if (parsed.schoolConfig) this.saveSchoolConfig(parsed.schoolConfig);
-      if (parsed.students) this.saveStudents(parsed.students);
+      if (parsed.students) this.saveStudents(sortStudentsAlphabetically(parsed.students));
       if (parsed.attendanceRecords) {
         localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(parsed.attendanceRecords));
       }

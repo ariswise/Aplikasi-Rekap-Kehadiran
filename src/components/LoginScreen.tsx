@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AuthUser, SchoolConfig, StoredAccount } from '../types/attendance';
-import { StorageService } from '../utils/storage';
+import { StorageService, sortStudentsAlphabetically } from '../utils/storage';
 import { FirebaseService } from '../utils/firebase';
 import {
   School,
@@ -30,7 +30,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
-  // Background fetch of latest accounts and school config from cloud
+  // Background fetch of latest accounts, school config, and students from cloud
   useEffect(() => {
     if (FirebaseService.isConfigured()) {
       FirebaseService.pullAllFromCloud()
@@ -46,6 +46,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             if (res.data.schoolConfig) {
               StorageService.saveSchoolConfig(res.data.schoolConfig);
             }
+            if (res.data.students && res.data.students.length > 0) {
+              const sorted = sortStudentsAlphabetically(res.data.students);
+              StorageService.saveStudents(sorted);
+            }
+            if (res.data.allRecords && Object.keys(res.data.allRecords).length > 0) {
+              localStorage.setItem('rekap_kehadiran_daily_records_v1', JSON.stringify(res.data.allRecords));
+            }
+            if (res.data.followUpCases && res.data.followUpCases.length > 0) {
+              StorageService.saveFollowUpCases(res.data.followUpCases);
+            }
+            localStorage.setItem('rekap_kehadiran_initialized_v1', 'true');
           }
         })
         .catch(() => {});
@@ -66,12 +77,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     // 1. Check local accounts first
     let user = StorageService.authenticateUser(username, password);
 
-    // 2. If not found locally, try fetching fresh accounts from Cloud Firestore
-    if (!user && FirebaseService.isConfigured()) {
+    // 2. If not found locally, or local students are empty, fetch fresh dataset from Cloud Firestore
+    const localStudents = StorageService.getStudents();
+    if ((!user || localStudents.length === 0) && FirebaseService.isConfigured()) {
       try {
         const cloudRes = await Promise.race([
           FirebaseService.pullAllFromCloud(),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
         ]);
 
         if (cloudRes.success && cloudRes.data) {
@@ -87,11 +99,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             StorageService.saveSchoolConfig(cloudRes.data.schoolConfig);
           }
           if (cloudRes.data.students && cloudRes.data.students.length > 0) {
-            StorageService.saveStudents(cloudRes.data.students);
+            const sorted = sortStudentsAlphabetically(cloudRes.data.students);
+            StorageService.saveStudents(sorted);
           }
           if (cloudRes.data.allRecords && Object.keys(cloudRes.data.allRecords).length > 0) {
             localStorage.setItem('rekap_kehadiran_daily_records_v1', JSON.stringify(cloudRes.data.allRecords));
           }
+          if (cloudRes.data.followUpCases && cloudRes.data.followUpCases.length > 0) {
+            StorageService.saveFollowUpCases(cloudRes.data.followUpCases);
+          }
+          localStorage.setItem('rekap_kehadiran_initialized_v1', 'true');
 
           // Retry local auth with updated cloud accounts
           user = StorageService.authenticateUser(username, password);

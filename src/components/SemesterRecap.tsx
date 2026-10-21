@@ -7,6 +7,7 @@ import {
 } from '../types/attendance';
 import { getSemesterMonths, INDONESIAN_MONTHS } from '../utils/date';
 import { ExcelService } from '../utils/excel';
+import { sortStudentsAlphabetically } from '../utils/storage';
 import {
   CalendarDays,
   FileSpreadsheet,
@@ -47,11 +48,12 @@ export const SemesterRecap: React.FC<SemesterRecapProps> = ({
   }, [selectedSemester, schoolConfig.academicYear]);
 
   const filteredStudents = useMemo(() => {
-    return students.filter(
+    const filtered = students.filter(
       (s) =>
         s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         s.nis.toLowerCase().includes(searchQuery.toLowerCase())
     );
+    return sortStudentsAlphabetically(filtered);
   }, [students, searchQuery]);
 
   return (

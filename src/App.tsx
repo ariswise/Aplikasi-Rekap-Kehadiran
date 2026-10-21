@@ -11,7 +11,7 @@ import {
   KopConfig,
   StoredAccount,
 } from './types/attendance';
-import { StorageService } from './utils/storage';
+import { StorageService, sortStudentsAlphabetically } from './utils/storage';
 import { FirebaseService } from './utils/firebase';
 import { LoginScreen } from './components/LoginScreen';
 import { Header } from './components/Header';
@@ -98,7 +98,7 @@ export default function App() {
         try {
           const cloudRes = await Promise.race([
             FirebaseService.pullAllFromCloud(),
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 12000)),
           ]);
 
           if (cloudRes.success && cloudRes.data) {
@@ -111,8 +111,9 @@ export default function App() {
             }
 
             if (cloudRes.data.students && cloudRes.data.students.length > 0) {
-              StorageService.saveStudents(cloudRes.data.students);
-              setStudents(cloudRes.data.students);
+              const sorted = sortStudentsAlphabetically(cloudRes.data.students);
+              StorageService.saveStudents(sorted);
+              setStudents(sorted);
               hasCloudData = true;
             }
 
@@ -187,6 +188,17 @@ export default function App() {
     setCurrentUser(user);
     setActiveRole(user.role);
 
+    // CRITICAL: Reload fresh storage data so newly synced cloud dataset on mobile is immediately active
+    const freshConfig = StorageService.getSchoolConfig();
+    const freshStudents = StorageService.getStudents();
+    const freshRecords = StorageService.getAllAttendanceRecords();
+    const freshFollowUps = StorageService.getFollowUpCases();
+
+    setSchoolConfig(freshConfig);
+    setStudents(sortStudentsAlphabetically(freshStudents));
+    setAllRecords(freshRecords);
+    setFollowUpCases(freshFollowUps);
+
     // If Guru BK logs in, direct to Follow-Up and Attendance Analysis
     if (user.role === 'guru_bk') {
       setActiveTab('followup');
@@ -245,9 +257,10 @@ export default function App() {
   };
 
   const handleSaveStudents = (updated: Student[]) => {
-    setStudents(updated);
-    StorageService.saveStudents(updated);
-    updated.forEach((s) => FirebaseService.syncStudent(s));
+    const sorted = sortStudentsAlphabetically(updated);
+    setStudents(sorted);
+    StorageService.saveStudents(sorted);
+    sorted.forEach((s) => FirebaseService.syncStudent(s));
   };
 
   const handleSaveDailyAttendance = (record: DailyAttendanceRecord) => {
@@ -299,17 +312,18 @@ export default function App() {
     }
   }, [effectiveAvailableClasses, schoolConfig.currentClass, currentUser]);
 
-  // Students visible according to user's class permissions
+  // Students visible according to user's class permissions (sorted A-Z)
   const visibleStudents = useMemo(() => {
-    if (!currentUser || currentUser.role === 'admin') {
-      return students;
-    }
-    return students.filter((s) => effectiveAvailableClasses.includes(s.classRoom));
+    const list = !currentUser || currentUser.role === 'admin'
+      ? students
+      : students.filter((s) => effectiveAvailableClasses.includes(s.classRoom));
+    return sortStudentsAlphabetically(list);
   }, [students, currentUser, effectiveAvailableClasses]);
 
-  // Current active class students
+  // Current active class students (always strictly sorted A-Z alphabetically)
   const activeClassStudents = useMemo(() => {
-    return students.filter((s) => s.classRoom === schoolConfig.currentClass);
+    const list = students.filter((s) => s.classRoom === schoolConfig.currentClass);
+    return sortStudentsAlphabetically(list);
   }, [students, schoolConfig.currentClass]);
 
   // Compute number of active alerts for sidebar badge

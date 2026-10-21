@@ -8,6 +8,7 @@ import {
 } from '../types/attendance';
 import { formatIndonesianDateWithDay, getCurrentTimeString, getTodayDateString, checkDateHoliday } from '../utils/date';
 import { ExcelService } from '../utils/excel';
+import { sortStudentsAlphabetically } from '../utils/storage';
 import {
   Calendar,
   Search,
@@ -235,9 +236,9 @@ export const DailyAttendance: React.FC<DailyAttendanceProps> = ({
     };
   }, [students, currentRecord]);
 
-  // Filtered students
+  // Filtered students (strictly sorted A-Z)
   const filteredStudents = useMemo(() => {
-    return students.filter((s) => {
+    const filtered = students.filter((s) => {
       const matchesSearch =
         s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         s.nis.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -257,6 +258,7 @@ export const DailyAttendance: React.FC<DailyAttendanceProps> = ({
 
       return true;
     });
+    return sortStudentsAlphabetically(filtered);
   }, [students, searchQuery, statusFilter, currentRecord]);
 
   return (

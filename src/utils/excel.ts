@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { Student, DailyAttendanceRecord, SchoolConfig, AttendanceStatus } from '../types/attendance';
+import { sortStudentsAlphabetically } from './storage';
 import { INDONESIAN_MONTHS } from './date';
 
 export interface ImportResult {
@@ -147,7 +148,7 @@ export const ExcelService = {
 
       return {
         success: students.length > 0,
-        students,
+        students: sortStudentsAlphabetically(students),
         errors,
       };
     } catch (err) {
@@ -165,7 +166,8 @@ export const ExcelService = {
     students: Student[],
     config: SchoolConfig
   ): void {
-    const rows = students.map((s, index) => {
+    const sorted = sortStudentsAlphabetically(students);
+    const rows = sorted.map((s, index) => {
       const entry = record.entries[s.id];
       const statusText =
         !entry || entry.status === 'unmarked'
@@ -213,8 +215,9 @@ export const ExcelService = {
   ): void {
     const daysInMonth = new Date(year, month, 0).getDate();
     const monthName = INDONESIAN_MONTHS[month - 1];
+    const sorted = sortStudentsAlphabetically(students);
 
-    const dataRows = students.map((s, idx) => {
+    const dataRows = sorted.map((s, idx) => {
       const row: Record<string, unknown> = {
         'No': idx + 1,
         'NIS': s.nis,
@@ -286,8 +289,9 @@ export const ExcelService = {
     const months = isGanjil ? [7, 8, 9, 10, 11, 12] : [1, 2, 3, 4, 5, 6];
     const yearParts = academicYear.split('/');
     const yearNumber = isGanjil ? parseInt(yearParts[0], 10) || 2024 : parseInt(yearParts[1], 10) || 2025;
+    const sorted = sortStudentsAlphabetically(students);
 
-    const dataRows = students.map((s, idx) => {
+    const dataRows = sorted.map((s, idx) => {
       let totalH = 0;
       let totalT = 0;
       let totalS = 0;

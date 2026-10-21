@@ -11,6 +11,7 @@ import {
   checkDateHoliday,
 } from '../utils/date';
 import { ExcelService } from '../utils/excel';
+import { sortStudentsAlphabetically } from '../utils/storage';
 import {
   Calendar,
   Search,
@@ -49,11 +50,12 @@ export const MonthlyRecap: React.FC<MonthlyRecapProps> = ({
   }, [daysCount]);
 
   const filteredStudents = useMemo(() => {
-    return students.filter(
+    const filtered = students.filter(
       (s) =>
         s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         s.nis.toLowerCase().includes(searchQuery.toLowerCase())
     );
+    return sortStudentsAlphabetically(filtered);
   }, [students, searchQuery]);
 
   // Aggregate monthly stats for the whole class

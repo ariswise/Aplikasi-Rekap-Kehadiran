@@ -6,6 +6,7 @@ import {
   FollowUpCase,
   FollowUpStatus,
 } from '../types/attendance';
+import { sortStudentsAlphabetically } from '../utils/storage';
 import {
   AlertTriangle,
   FileText,
@@ -43,9 +44,10 @@ export const FollowUpReports: React.FC<FollowUpReportsProps> = ({
   const [filterType, setFilterType] = useState<'all' | 'keterlambatan' | 'alpa'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Automatically compute attendance & lateness breakdown per student in this semester
+  // Automatically compute attendance & lateness breakdown per student in this semester (sorted A-Z)
   const studentMetrics = useMemo(() => {
-    return students.map((s) => {
+    const sorted = sortStudentsAlphabetically(students);
+    return sorted.map((s) => {
       let h = 0, sakit = 0, izin = 0, alpa = 0, lateCount = 0;
 
       Object.values(allRecords).forEach((rec) => {
@@ -191,9 +193,9 @@ export const FollowUpReports: React.FC<FollowUpReportsProps> = ({
     onSaveFollowUpCases(updatedCases);
   };
 
-  // Filtered alerts
+  // Filtered alerts (strictly sorted A-Z by student name)
   const filteredAlerts = useMemo(() => {
-    return activeAlerts.filter((item) => {
+    const list = activeAlerts.filter((item) => {
       const matchesSearch =
         item.student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         item.student.nis.toLowerCase().includes(searchQuery.toLowerCase());
@@ -207,6 +209,18 @@ export const FollowUpReports: React.FC<FollowUpReportsProps> = ({
       if (filterType === 'alpa' && item.alpa < 3) return false;
 
       return true;
+    });
+
+    return [...list].sort((a, b) => {
+      const nameA = (a.student?.name || '').trim().replace(/\s+/g, ' ');
+      const nameB = (b.student?.name || '').trim().replace(/\s+/g, ' ');
+      const cmp = nameA.localeCompare(nameB, 'id', {
+        sensitivity: 'accent',
+        caseFirst: 'upper',
+        numeric: true,
+      });
+      if (cmp !== 0) return cmp;
+      return (a.student?.nis || '').localeCompare(b.student?.nis || '', undefined, { numeric: true });
     });
   }, [activeAlerts, searchQuery, filterStatus, filterType]);
 

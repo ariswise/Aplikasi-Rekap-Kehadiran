@@ -12,6 +12,7 @@ import {
   checkDateHoliday,
 } from '../utils/date';
 import * as XLSX from 'xlsx';
+import { sortStudentsAlphabetically } from '../utils/storage';
 import {
   CalendarRange,
   ChevronLeft,
@@ -52,11 +53,12 @@ export const WeeklyRecap: React.FC<WeeklyRecapProps> = ({
   };
 
   const filteredStudents = useMemo(() => {
-    return students.filter(
+    const filtered = students.filter(
       (s) =>
         s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         s.nis.toLowerCase().includes(searchQuery.toLowerCase())
     );
+    return sortStudentsAlphabetically(filtered);
   }, [students, searchQuery]);
 
   // Daily class aggregates across the 6 week days
@@ -83,7 +85,8 @@ export const WeeklyRecap: React.FC<WeeklyRecapProps> = ({
 
   // Export Weekly to Excel
   const handleExportExcel = () => {
-    const dataRows = students.map((s, idx) => {
+    const sorted = sortStudentsAlphabetically(students);
+    const dataRows = sorted.map((s, idx) => {
       const row: Record<string, unknown> = {
         'No': idx + 1,
         'NIS': s.nis,

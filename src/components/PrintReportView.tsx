@@ -16,7 +16,7 @@ import {
 } from '../utils/date';
 import { KopSuratView } from './KopSuratView';
 import { KopConfigDrawer } from './KopConfigDrawer';
-import { DEFAULT_KOP_CONFIG } from '../utils/storage';
+import { DEFAULT_KOP_CONFIG, sortStudentsAlphabetically } from '../utils/storage';
 import { Printer, X, Sliders, Check } from 'lucide-react';
 
 export type PrintReportType = 'daily' | 'weekly' | 'monthly' | 'semester' | 'individual';
@@ -53,6 +53,11 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
     schoolConfig.kopConfig || DEFAULT_KOP_CONFIG
   );
   const [isConfigDrawerOpen, setIsConfigDrawerOpen] = useState<boolean>(false);
+
+  // Ensure students are always strictly sorted alphabetically A-Z in all print and PDF documents
+  const sortedStudents = React.useMemo(() => {
+    return sortStudentsAlphabetically(students);
+  }, [students]);
 
   const todayFormatted = activeKop.signDate || formatIndonesianDate(new Date().toISOString().slice(0, 10));
   const signCity = activeKop.signCity || schoolConfig.city;
@@ -174,7 +179,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {students.map((student, idx) => {
+                {sortedStudents.map((student, idx) => {
                   const entry = dailyRecord.entries[student.id];
                   const status = entry?.status || 'unmarked';
                   const isLate = !!entry?.isLate;
@@ -236,7 +241,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {students.map((student, idx) => {
+                {sortedStudents.map((student, idx) => {
                   let h = 0, t = 0, s = 0, i = 0, a = 0;
                   return (
                     <tr key={student.id}>
@@ -328,7 +333,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {students.map((student, idx) => {
+                  {sortedStudents.map((student, idx) => {
                     let sH = 0, sT = 0, sS = 0, sI = 0, sA = 0;
                     return (
                       <tr key={student.id}>
@@ -405,7 +410,7 @@ export const PrintReportView: React.FC<PrintReportViewProps> = ({
                 </tr>
               </thead>
               <tbody>
-                {students.map((student, idx) => {
+                {sortedStudents.map((student, idx) => {
                   let totalH = 0, totalT = 0, totalS = 0, totalI = 0, totalA = 0;
                   Object.values(allRecords).forEach((rec) => {
                     if (rec.classRoom !== schoolConfig.currentClass) return;

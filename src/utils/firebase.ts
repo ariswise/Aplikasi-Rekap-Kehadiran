@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { getAuth, Auth } from 'firebase/auth';
 import { Student, SchoolConfig, DailyAttendanceRecord, FollowUpCase, StoredAccount } from '../types/attendance';
+import { sortStudentsAlphabetically } from './storage';
 import firebaseAppletConfig from '../../firebase-applet-config.json';
 
 // Skill-mandated error handling structures
@@ -317,6 +318,7 @@ export const FirebaseService = {
       studentsSnap.forEach((d) => {
         students.push(d.data() as Student);
       });
+      const sortedStudents = sortStudentsAlphabetically(students);
 
       // 3. Read Attendance
       const attendanceSnap = await getDocs(collection(db, 'attendance'));
@@ -343,12 +345,12 @@ export const FirebaseService = {
         success: true,
         data: {
           schoolConfig,
-          students,
+          students: sortedStudents,
           allRecords,
           followUpCases,
           accounts: accounts.length > 0 ? accounts : undefined,
         },
-        message: `Berhasil mengunduh data dari Cloud (${students.length} Siswa, ${Object.keys(allRecords).length} Riwayat Absensi).`,
+        message: `Berhasil mengunduh data dari Cloud (${sortedStudents.length} Siswa, ${Object.keys(allRecords).length} Riwayat Absensi).`,
       };
     } catch (err: any) {
       console.error('Pull all error:', err);
